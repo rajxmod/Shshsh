@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAJ X Predictor Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+    <style>
+        body {
+            font-family: 'Manrope', sans-serif;
+            transition: all 0.5s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #particles-js {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+
+        .theme-1 { background: #0f172a; color: #22d3ee; }
+        .theme-2 { background: #1f2937; color: #facc15; }
+        .theme-3 { background: #111827; color: #10b981; }
+        .theme-4 { background: #000000; color: #f43f5e; }
+
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+        }
+
+        .win { color: #16a34a; }
+        .loss { color: #dc2626; }
+        .pending { color: #f97316; }
+    </style>
+</head>
+
+<body class="theme-1 min-h-screen flex flex-col items-center py-10">
+    <div id="particles-js"></div>
+
+    <header class="mb-8 text-center space-y-2">
+        <h1 class="text-4xl font-bold uppercase"><i class="fas fa-robot mr-2"></i>RAJ X Predictor</h1>
+        <p class="text-sm opacity-75"><i class="fas fa-chart-line"></i> AI + API Prediction System</p>
+    </header>
+
+    <section class="w-full max-w-xl mb-8 p-6 rounded-lg shadow-lg card space-y-4 text-center">
+        <h2 class="text-2xl font-semibold"><i class="fas fa-chart-pie mr-2"></i> Status</h2>
+        <div class="flex justify-between text-base items-center">
+            <div><i class="fas fa-trophy mr-1"></i> Wins: <span id="totalWins" class="font-semibold">0</span></div>
+            <div><i class="fas fa-times-circle mr-1"></i> Losses: <span id="totalLosses" class="font-semibold">0</span></div>
+            <div><i class="fas fa-percentage mr-1"></i> Accuracy: <span id="accuracy" class="font-semibold">0%</span></div>
+        </div>
+    </section>
+
+    <section class="w-full max-w-xl mb-8 p-6 rounded-lg shadow-lg card text-center space-y-4">
+        <h2 class="text-2xl font-semibold"><i class="fas fa-lightbulb mr-2"></i> Current Prediction</h2>
+        <div><i class="fas fa-clock mr-1"></i> Period: <span id="currentPeriod" class="font-semibold">--</span></div>
+        <div><i class="fas fa-brain mr-1"></i> Prediction: <span id="prediction" class="pending font-semibold">Pending</span></div>
+    </section>
+
+    <section class="w-full max-w-xl mb-8 p-6 rounded-lg shadow-lg card space-y-4">
+        <h2 class="text-2xl font-semibold text-center"><i class="fas fa-history mr-2"></i> History</h2>
+        <div id="history" class="space-y-2 text-left text-sm"></div>
+    </section>
+
+    <script>
+        let historyData = [];
+        let lastFetchedPeriod = null;
+
+        async function fetchGameResult() {
+            const payload = { pageSize: 10, pageNo: 1, typeId: 1, language: 0, random: "4a0522c6ecd8410496260e686be2a57c", signature: "334B5E70A0C9B8918B0B15E517E2069C", timestamp: Math.floor(Date.now() / 1000) };
+            let response = await fetch("https://api.bdg88zf.com/api/webapi/GetNoaverageEmerdList", {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+            });
+            let data = await response.json();
+            let latestResult = data?.data?.list?.[0];
+            if (latestResult) {
+                return { period: latestResult.issueNumber, result: latestResult.number };
+            } else {
+                return null;
+            }
+        }
+
+        function autoPredict() {
+            return Math.random() < 0.5 ? "BIG" : "SMALL";
+        }
+
+        function generateNumber(prediction) {
+            const bigNumbers = [5, 6, 7, 8, 9];
+            const smallNumbers = [0, 1, 2, 3, 4];
+            return prediction === "BIG" ? bigNumbers[Math.floor(Math.random() * bigNumbers.length)] : smallNumbers[Math.floor(Math.random() * smallNumbers.length)];
+        }
+
+        async function updatePrediction() {
+            let apiResult = await fetchGameResult();
+            if (apiResult && apiResult.period !== lastFetchedPeriod) {
+                lastFetchedPeriod = apiResult.period;
+                const prediction = autoPredict();
+                const predictedNumber = generateNumber(prediction);
+                const period = (BigInt(apiResult.period) + 1n).toString();
+                document.getElementById("currentPeriod").innerText = period;
+                document.getElementById("prediction").innerText = `${prediction} (${predictedNumber})`;
+                document.getElementById("prediction").className = "font-semibold pending";
+                historyData.unshift({ period: period, prediction: prediction, number: predictedNumber, resultStatus: "Pending" });
+                updateHistory();
+                setTimeout(() => checkWinLoss(apiResult), 2000);
+            }
+        }
+
+        function checkWinLoss(apiResult) {
+            historyData.forEach(item => {
+                if (item.period === apiResult.period) {
+                    let actualResult = apiResult.result >= 5 ? "BIG" : "SMALL";
+                    item.resultStatus = (item.prediction === actualResult) ? "WIN" : "LOSS";
+                }
+            });
+            updateStats();
+            updateHistory();
+        }
+
+        function updateStats() {
+            const wins = historyData.filter(item => item.resultStatus === "WIN").length;
+            const losses = historyData.filter(item => item.resultStatus === "LOSS").length;
+            const total = wins + losses;
+            const confidence = total ? (wins / total) * 100 : 0;
+            document.getElementById("totalWins").innerText = wins;
+            document.getElementById("totalLosses").innerText = losses;
+            document.getElementById("accuracy").innerText = confidence.toFixed(2) + '%';
+        }
+
+        function updateHistory() {
+            const historyDiv = document.getElementById("history");
+            historyDiv.innerHTML = "";
+            historyData.forEach(item => {
+                const statusClass = item.resultStatus === "WIN" ? "win" : item.resultStatus === "LOSS" ? "loss" : "pending";
+                historyDiv.innerHTML += `<div><i class="fas fa-circle-notch mr-1"></i> Period: ${item.period} | Prediction: ${item.prediction} (${item.number}) | <span class="${statusClass}">${item.resultStatus}</span></div>`;
+            });
+        }
+
+        setInterval(updatePrediction, 10000);
+    </script>
+</body>
+</html>
